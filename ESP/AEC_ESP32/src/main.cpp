@@ -3,11 +3,9 @@ References:
 - ESP32Servo: https://github.com/madhephaestus/ESP32Servo (Author: madhephaestus)
 - LiquidCrystal_I2C: https://github.com/johnrickman/LiquidCrystal_I2C (Author: johnrickman)
 - ArduinoJson: https://github.com/bblanchon/ArduinoJson (Author: Benoît Blanchon)
-- PubSubClient: https://github.com/knolleary/pubsubclient (Author: Nick O'Leary)
-- InfluxDbClient: https://github.com/tobiasschuerg/InfluxDB-Client-for-Arduino (Author: Tobias Schürg)
 - WiFi: https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFi (Author: Espressif Systems)
 - HTTPClient: https://github.com/espressif/arduino-esp32/tree/master/libraries/HTTPClient (Author: Espressif Systems)
-- WiFiClientSecure: https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFiClientSecure (Author: Espressif Systems)
+- Wire: https://github.com/espressif/arduino-esp32/tree/master/libraries/Wire (Author: Espressif Systems)
 - GitHub Copilot: Used for autocompletion assistance
 */
 
@@ -16,8 +14,6 @@ References:
 #include "../lib/LiquidCrystal_I2C-master/LiquidCrystal_I2C.h"
 #include <Arduino.h>
 #include <WiFi.h>
-#include <InfluxDbClient.h>
-#include <PubSubClient.h>
 #include <Wire.h>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
@@ -170,6 +166,33 @@ void checkFaultStatus() {
   }
 }
 
+// Check override status from server
+void checkOverrideStatus() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin("http://pi.com/plant1");
+
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      String payload = http.getString();
+      StaticJsonDocument<200> doc;
+      DeserializationError error = deserializeJson(doc, payload);
+      if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
+        return;
+      }
+      realtimeTracking = doc["manual_override"];
+      importedUserAngle = doc["override_angle"];
+    } else {
+      Serial.println("Error on HTTP GET request for override status: " + String(httpCode));
+    }
+    http.end();
+  } else {
+    Serial.println("WiFi not connected");
+  }
+}
+
 //Main loop
 void loop() {
 //Checking the fault button status
@@ -200,6 +223,7 @@ void loop() {
   }
   //check for serverside fault status change
   checkFaultStatus();
+  checkOverrideStatus();
 
   delay(1000); // Delay between requests
 }
