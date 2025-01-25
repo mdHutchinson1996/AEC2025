@@ -1,3 +1,33 @@
+//Reference the fact that I used the library examples to teach me the core functions.
+//Reference CoPilot assistant autocompletion
+
+//Include Libraries
+#include "ESP32Servo.h"
+#include "../lib/LiquidCrystal_I2C-master/LiquidCrystal_I2C.h"
+
+//Setting up the lcd and servo
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo myservo;
+
+//Variable definitions
+int servoPin = 19; //servo pin
+int faultButtonPin = 32; //fault button pin
+int faultLEDPin = 33; //fault LED pin
+int angle = 0; //servo angle
+int minAngle = 0; //minimum permissible hardware angle
+int maxAngle = 180; //maximum permissible hardware angle
+int currentServoAngle = 0; //current servo angle
+
+//Imported data from the parser
+int importedSunAngle = 0; //from the JSON parsing
+int importedUserAngle = 0; // from the website
+int importedVoltage = 0; //from the JSON parsing
+int importedCurrent = 0; //from the JSON parsing
+
+bool realtimeTracking = true; //default to auto control
+bool dataReceived = false; //default to no data
+bool faultDetected = false; //default to no fault
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <InfluxDbClient.h>
@@ -107,9 +137,100 @@ void readI2CData() {
   // Serial.println(current);
   // Serial.print("Sun Angle: ");
   // Serial.println(angle);
+  lcd.init();
+  lcd.backlight();
+  myservo.attach(servoPin); //attach to pin 2
 }
 
 void loop() {
+
+  currentServoAngle = myservo.read(); //grab the current servo angle
+  //run the data acquisition function
+
+//Checking the fault button status
+if (digitalRead(faultButtonPin) == true) {
+  //condition where a fault has occured, flip the faultDetected boolean, run the servo fault condition function, and display indicators
+  faultDetected = true;
+  servoFault(faultDetected);
+  lcd.print("Fault Detected");
+  faultLEDPin = HIGH;
+} else {
+//Normal run condition
+
+  faultDetected = false;
+
+  //control the servo based on the user's desired functionality
+  //*Add important delays to prevent the servo from moving too quickly
+  if (realtimeTracking == true) {
+    autoControl(importedSunAngle);
+  } else {
+    manualControl(importedUserAngle);
+  }
+
+  if (!dataReceived) {
+  lcd.print("Awaiting Data...");
+  } else {
+  lcd.print("Current: " + importedCurrent);
+  lcd.print("Voltage: " + importedVoltage);
+  lcd.print("Angle: " + angle);
+  } 
+
+}
+
+//USEFUL INFO FOR OPERATION
+  //lcd.write | function to write an int to the display 
+  //lcd.print | function to print a string to the display
+  //lcd.clear | funciton to clear off what is currently on the screen
+
+  //myservo.write(angle);
+  //delay(ms);
+}
+
+
+//Function Definitions
+
+//Function to aquired data from the I2C 
+//code to grab data from I2C
+//once the data is grabbed, set dataReceived to true and update the import variables
+
+
+int manualControl(int userAngle) {
+  //This function will take in the user's input and move the servo to that angle
+  if (userAngle < minAngle) {
+    myservo.write(minAngle);
+  } else if (userAngle > maxAngle) {
+    myservo.write(maxAngle);
+  } else {
+  myservo.write(userAngle);
+  }
+}
+
+int autoControl(int sunAngle) {
+  //This function will take in the sun's angle and move the servo to that angle
+  if (sunAngle < minAngle) {
+    myservo.write(minAngle);
+  } else if (sunAngle > maxAngle) {
+    myservo.write(maxAngle);
+  } else {
+  myservo.write(sunAngle);
+  }
+}
+
+bool servoFault(bool buttonStatus) {
+  //This function will check if the fault button is pressed and return a boolean
+  if (buttonStatus == false) {
+    dataReceived = false;
+  }
+  return dataReceived;
+}
+
+//General Requirements
+//Servo needs to be controlled to match the "angle of the sun"
+//The LCD needs to display the current, voltage, and angle.
+//The fault button needs to be checked 
+//The fault LED needs to be turned on if the fault button is pressed
+
+
 
   //readI2CData();
   connectMQTT();
