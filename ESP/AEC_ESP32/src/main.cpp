@@ -79,10 +79,10 @@ void connectMQTT() {
     }
   }
 }
-
+String jsonData = "";
 void readI2CData() {
   Wire.requestFrom(0x55, 32); // Request 32 bytes from I2C address 0x55
-  String jsonData = "";
+  jsonData = "";
   while (Wire.available()) {
     char c = Wire.read();
     if (c == 0xFF) break; // End of data
@@ -111,9 +111,14 @@ void readI2CData() {
 
 void loop() {
 
-  //readI2CData();
   connectMQTT();
-  //client.beginPublish();
+  readI2CData();
+  if (client.connected()) {
+    client.publish("solar/plant1", jsonData.c_str());
+    Serial.println("Published JSON data to MQTT");
+  } else {
+    Serial.println("Failed to publish JSON data to MQTT");
+  }
   delay(1000);
 }
 
