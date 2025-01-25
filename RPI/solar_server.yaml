@@ -1,0 +1,62 @@
+#Configuration file for docker-compose solar server system
+#This file automatically configures InfluxDB, Grafana, Telegraf, and Home Assistant
+#Authentication variables can be found in the accompanied solar_server.env file
+
+services:
+#InfluxDB serves as the database for the solar server system, handling data storage,
+#retention, and retrieval of all relevant data
+  influxdb:                     
+    image: influxdb:1.11-alpine
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=${INFLUXDB}
+      - INFLUXDB_ADMIN_USER=${INFLUXDB_USERNAME}
+      - INFLUXDB_ADMIN_PASSWORD=${INFLUXDB_PASSWORD}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    restart: unless-stopped
+#Grafana serves as the visualization platform for the InfluxDB database, providing
+#dashboards and visualizations that can be imported within Home Assistant
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USERNAME}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning
+    restart: unless-stopped
+#Telegraf serves as the data collector for the solar server system, collecting data 
+#primarily from the ESP32 and sending it to the InfluxDB database
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    restart: unless-stopped
+    volumes:
+      - /etc/telegraf/telegraf.conf:/telegraf.conf  
+    environment:
+      - INFLUXDB_URL=http://localhost:8086  
+      - INFLUXDB_USER=${INFLUXDB_USERNAME}  
+      - INFLUXDB_PASSWORD=${INFLUXDB_PASSWORD}  
+      - INFLUXDB_DATABASE=${INFLUXDB}  
+
+#Home Assistant serves as the home automation platform for the solar server system,
+#providing a web-interface for visualization and a control panel for ESP32 commands
+  homeassistant:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    container_name: home-assistant
+    environment:
+      - TZ=America/Toronto  
+    volumes:
+      - /etc/homeassistant/config:/config  
+    network_mode: "host"  
+    restart: unless-stopped
+
+volumes:
+  influxdb-data: {}
+  grafana-data: {}

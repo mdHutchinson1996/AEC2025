@@ -1,5 +1,15 @@
-//Reference the fact that I used the library examples to teach me the core functions.
-//Reference CoPilot assistant autocompletion
+/*
+References:
+- ESP32Servo: https://github.com/madhephaestus/ESP32Servo (Author: madhephaestus)
+- LiquidCrystal_I2C: https://github.com/johnrickman/LiquidCrystal_I2C (Author: johnrickman)
+- ArduinoJson: https://github.com/bblanchon/ArduinoJson (Author: Benoît Blanchon)
+- PubSubClient: https://github.com/knolleary/pubsubclient (Author: Nick O'Leary)
+- InfluxDbClient: https://github.com/tobiasschuerg/InfluxDB-Client-for-Arduino (Author: Tobias Schürg)
+- WiFi: https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFi (Author: Espressif Systems)
+- HTTPClient: https://github.com/espressif/arduino-esp32/tree/master/libraries/HTTPClient (Author: Espressif Systems)
+- WiFiClientSecure: https://github.com/espressif/arduino-esp32/tree/master/libraries/WiFiClientSecure (Author: Espressif Systems)
+- GitHub Copilot: Used for autocompletion assistance
+*/
 
 //Include Libraries
 #include "ESP32Servo.h"
@@ -12,25 +22,16 @@
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
 
-// #define INFLUXDB_URL "http//pi:8125"
-// InfluxDB v2 server or cloud API token (Use: InfluxDB UI -> Data -> API Tokens -> Generate API Token)
-// #define INFLUXDB "plant1"
-
 
 //Variable definitions
 int servoPin = 19; //servo pin
-//int angle = 0; //servo angle
 int minAngle = 0; //minimum permissible hardware angle
 int maxAngle = 180; //maximum permissible hardware angle
 //int currentServoAngle = 0; //current servo angle
 
-//Imported data from the parser
+// variables for web server responses
 int importedUserAngle = 0; // from the website
-
-
 bool realtimeTracking = true; //default to auto control
-
-//bool faultDetected = false; //default to no fault
 
 String jsonData = "";
 
@@ -41,12 +42,7 @@ Servo myservo;
 // Replace with your network credentials
 const char* ssid = "Coverdale";
 const char* password = "NOHACKSSS";
-// const char* mqtt_server = "pi";
-// const char* mqtt_port = "1883";
-// const char* mqtt_topic = "plant1";
 
-// WiFiClient espClient;
-// PubSubClient client(espClient);
 
 bool fault = false;
 bool faultDisplayed = false;
@@ -59,11 +55,9 @@ float voltage = 0.0;
 float current = 0.0;
 float angle = 0.0;
 
-// InfluxDBClient dbClient(INFLUXDB_URL, INFLUXDB);
-
+// On fault at plant (button pushed)
 void faultButtonPress() {
   fault = true;
-  // faultDisplayed = true;
   Serial.print("Fault detected");
   digitalWrite(faultLED, HIGH);
 }
@@ -72,8 +66,10 @@ void setup() {
   // Initialize serial communication
   Serial.begin(9600);
 
+  // Initialize fault button and LED and attached interrupt
   pinMode(faultButton, INPUT_PULLUP);
   pinMode(faultLED, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(faultButton), faultButtonPress, FALLING);
 
   // Connect to WiFi
   WiFi.begin(ssid, password);
@@ -84,31 +80,17 @@ void setup() {
   }
   Serial.println("Connected to WiFi");
 
-  pinMode(faultButton, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(faultButton), faultButtonPress, FALLING);
-  //client.setServer(mqtt_server, mqtt_port);
-
+  //setup wire for I2C communication
   Wire.begin(SDA_PIN, SCL_PIN);
   Wire.setClock(100000);
 
+  //setup lcd and servo
   lcd.init();
   lcd.backlight();
   myservo.attach(servoPin); //attach to pin 2
 }
 
-//Function to connect to MQTT broker
-// void connectMQTT() {
-//   while (!client.connected()) {
-//     Serial.println("Connecting to MQTT...");
-//     if (client.connect("ESP32Client")) { // MQTT client ID
-//       Serial.println("Connected to MQTT!");
-//     } else {
-//       Serial.print("Failed. Retrying in 5 seconds...");
-//       delay(5000);
-//     }
-//   }
-// }
-
+//read I2C data from nano for voltage, current, and angle
 void readI2CData() {
   Wire.requestFrom(0x55, 32); // Request 32 bytes from I2C address 0x55
   jsonData = "";
@@ -138,7 +120,7 @@ void readI2CData() {
   Serial.println(angle);
 }
 
-
+// for override control angle set on server
 void manualControl(int userAngle) {
   //This function will take in the user's input and move the servo to that angle
   if (userAngle < minAngle) {
@@ -150,6 +132,7 @@ void manualControl(int userAngle) {
   }
 }
 
+// normal operating controls, set servo angle to read-time sun angle
 void autoControl(int sunAngle) {
   //This function will take in the sun's angle and move the servo to that angle
   if (sunAngle < minAngle) {
@@ -161,40 +144,24 @@ void autoControl(int sunAngle) {
   }
 }
 
+//Main loop
 void loop() {
-
-//currentServoAngle = myservo.read(); //grab the current servo angle
-  //run the data acquisition function
-
 //Checking the fault button status
   if (!fault) {
-
-  //Normal run condition
-    //control the servo based on the user's desired functionality
-    //*Add important delays to prevent the servo from moving too quickly
-
+    //Normal run condition
+    // Read data from nano
     readI2CData();
-
+    //check for override from server
     if (realtimeTracking == true) {
       autoControl((int)angle);
     } else {
       manualControl(importedUserAngle);
     }
-
+    //update LCD with current data
     lcd.setCursor(0, 0);
     lcd.print("C: " + (String)current +" V: " + (String)voltage);
     lcd.setCursor(0, 1);
     lcd.print("A: " + (String)angle);
-
-    //connectMQTT();
-    
-    // if (client.connected()) {
-    //   client.publish("solar/plant1", jsonData.c_str());
-    //   Serial.println("Published JSON data to MQTT");
-    // } else {
-    //   Serial.println("Failed to publish JSON data to MQTT");
-    // }
-    delay(1000);
   }
   else{
     if(!faultDisplayed){
@@ -206,12 +173,12 @@ void loop() {
     
   }
 
-  // Ensure WiFi is connected
+  //Ensure WiFi is connected
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
 
     // Specify the URL for the HTTP request
-    http.begin("pi:8086");
+    http.begin("http://pi.com/plant1");
 
     // Send HTTP GET request
     int httpCode = http.GET();
@@ -219,19 +186,19 @@ void loop() {
       String payload = http.getString();
       Serial.println(payload);
     } else {
-      Serial.println("Error on HTTP GET request");
+      Serial.println("Error on HTTP GET request "+(String)httpCode);
     }
     http.end();
-
+    delay(1000);
     // Send HTTP POST request
-    http.begin("pi:8086");
+    http.begin("http://pi.com/plant1");
     http.addHeader("Content-Type", "application/json");
     int postHttpCode = http.POST(jsonData);
     if (postHttpCode > 0) {
       String postPayload = http.getString();
       Serial.println(postPayload);
     } else {
-      Serial.println("Error on HTTP POST request");
+      Serial.println("Error on HTTP POST request "+(String)httpCode);
     }
     http.end();
   } else {
