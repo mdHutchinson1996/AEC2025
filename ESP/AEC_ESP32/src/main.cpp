@@ -144,6 +144,32 @@ void autoControl(int sunAngle) {
   }
 }
 
+// Check fault status from server
+void checkFaultStatus() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin("http://pi.com/plant1/fault");
+
+    int httpCode = http.GET();
+    if (httpCode > 0) {
+      String payload = http.getString();
+      StaticJsonDocument<200> doc;
+      DeserializationError error = deserializeJson(doc, payload);
+      if (error) {
+        Serial.print(F("deserializeJson() failed: "));
+        Serial.println(error.f_str());
+        return;
+      }
+      fault = doc["fault"];
+    } else {
+      Serial.println("Error on HTTP GET request for fault status: " + String(httpCode));
+    }
+    http.end();
+  } else {
+    Serial.println("WiFi not connected");
+  }
+}
+
 //Main loop
 void loop() {
 //Checking the fault button status
@@ -172,38 +198,8 @@ void loop() {
     }
     
   }
+  //check for serverside fault status change
+  checkFaultStatus();
 
-  //Ensure WiFi is connected
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-
-    // Specify the URL for the HTTP request
-    http.begin("http://pi.com/plant1");
-
-    // Send HTTP GET request
-    int httpCode = http.GET();
-    if (httpCode > 0) {
-      String payload = http.getString();
-      Serial.println(payload);
-    } else {
-      Serial.println("Error on HTTP GET request "+(String)httpCode);
-    }
-    http.end();
-    delay(1000);
-    // Send HTTP POST request
-    http.begin("http://pi.com/plant1");
-    http.addHeader("Content-Type", "application/json");
-    int postHttpCode = http.POST(jsonData);
-    if (postHttpCode > 0) {
-      String postPayload = http.getString();
-      Serial.println(postPayload);
-    } else {
-      Serial.println("Error on HTTP POST request "+(String)httpCode);
-    }
-    http.end();
-  } else {
-    Serial.println("WiFi not connected");
-  }
-
-  delay(5000); // Delay between requests
+  delay(1000); // Delay between requests
 }
