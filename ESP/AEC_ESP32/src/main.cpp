@@ -37,7 +37,7 @@ Servo myservo;
 
 // Replace with your network credentials
 const char* ssid = "Coverdale";
-const char* password = "NOHACKSSS";
+const char* password = "Password";
 
 
 bool fault = false;
